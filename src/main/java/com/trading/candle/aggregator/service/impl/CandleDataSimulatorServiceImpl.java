@@ -15,16 +15,20 @@ public class CandleDataSimulatorServiceImpl implements CandleDataSimulatorServic
     private final Random random = new Random();
     private final CandleAggregationService candleAggregationService;
 
-    CandleDataSimulatorServiceImpl(CandleAggregationService candleAggregationService) {
+    public CandleDataSimulatorServiceImpl(CandleAggregationService candleAggregationService) {
         this.candleAggregationService = candleAggregationService;
+    }
+
+    protected Random getRandom() {
+        return random;
     }
 
     @Override
     @Scheduled(fixedRate = 200)
     public void generateEvent() {
-        String symbol = random.nextBoolean() ? "BTC-USD" : "ETH-USD";
+        String symbol = getRandom().nextBoolean() ? "BTC-USD" : "ETH-USD";
         double base = symbol.equals("BTC-USD") ? 30000 : 2000;
-        double price = base + random.nextDouble() * 100;
+        double price = base + getRandom().nextDouble() * 100;
 
         BidAskEvent event = new BidAskEvent(
                 symbol,
@@ -34,6 +38,10 @@ public class CandleDataSimulatorServiceImpl implements CandleDataSimulatorServic
         );
 
         System.out.println("Generated event: " + event);
-        candleAggregationService.processEvent(event);
+        try {
+            candleAggregationService.processEvent(event);
+        } catch (Exception e) {
+            System.err.println("Error processing event: " + e.getMessage());
+        }
     }
 }

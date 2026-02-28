@@ -15,4 +15,11 @@ public interface CandleRepository extends JpaRepository<CandleEntity, Long> {
             String candleInterval,
             long openTime
     );
+
+    List<CandleEntity> findBySymbolAndCandleIntervalAndOpenTimeBetweenOrderByOpenTimeAsc(
+            String symbol,
+            String candleInterval,
+            long from,
+            long to
+    );
 }
