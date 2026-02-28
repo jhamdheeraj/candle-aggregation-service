@@ -7,27 +7,32 @@ import com.trading.candle.aggregator.service.impl.CandleAggregationServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 
-import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentCaptor.forClass;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class CandleAggregationServiceImplTest {
 
     @Mock
     private CandleRepository candleRepository;
 
-    @InjectMocks
+    @Mock
+    private CandlePersistenceService persistenceService;
+
+    @Mock
+    private Executor taskExecutor;
+
     private CandleAggregationServiceImpl service;
 
     private BidAskEvent testEvent;
@@ -35,6 +40,14 @@ class CandleAggregationServiceImplTest {
     @BeforeEach
     void setUp() {
         testEvent = new BidAskEvent("BTC-USD", 30000.0, 30100.0, 1640995200L);
+        
+        doAnswer(invocation -> {
+            Runnable task = invocation.getArgument(0);
+            task.run();
+            return null;
+        }).when(taskExecutor).execute(any(Runnable.class));
+        
+        service = new CandleAggregationServiceImpl(candleRepository, persistenceService, taskExecutor);
     }
 
     @Test
@@ -158,14 +171,9 @@ class CandleAggregationServiceImplTest {
 
     @Test
     void processEvent_shouldHandleNegativePrices() {
-        BidAskEvent negativeEvent = new BidAskEvent("BTC-USD", -1000.0, -900.0, 1640995200L);
-        
-        service.processEvent(negativeEvent);
-
-        var activeCandles = getActiveCandles();
-        double expectedMidPrice = (-1000.0 + -900.0) / 2.0;
-        activeCandles.values().forEach(candle -> {
-            assertEquals(expectedMidPrice, candle.getOpenPrice());
+        assertThrows(IllegalArgumentException.class, () -> {
+            BidAskEvent negativeEvent = new BidAskEvent("BTC-USD", -1000.0, -900.0, 1640995200L);
+            service.processEvent(negativeEvent);
         });
     }
 
@@ -173,6 +181,7 @@ class CandleAggregationServiceImplTest {
     void flushToDatabase_shouldDoNothingWhenNoActiveCandles() {
         service.flushToDatabase();
         
+        verify(persistenceService, never()).persistCandles(any());
         verify(candleRepository, never()).save(any(CandleEntity.class));
         verify(candleRepository, never()).findBySymbolAndCandleIntervalAndOpenTime(anyString(), anyString(), anyLong());
     }
@@ -180,13 +189,11 @@ class CandleAggregationServiceImplTest {
     @Test
     void flushToDatabase_shouldInsertNewCandles() {
         service.processEvent(testEvent);
+        when(persistenceService.persistCandles(any())).thenReturn(CompletableFuture.completedFuture(null));
         
-        when(candleRepository.findBySymbolAndCandleIntervalAndOpenTime(anyString(), anyString(), anyLong()))
-                .thenReturn(Optional.empty());
-        
-        service.flushToDatabase();
+        service.flushToDatabase().join();
 
-        verify(candleRepository, times(2)).save(any(CandleEntity.class));
+        verify(persistenceService, times(1)).persistCandles(any());
         
         var activeCandles = getActiveCandles();
         assertTrue(activeCandles.isEmpty());
@@ -195,29 +202,11 @@ class CandleAggregationServiceImplTest {
     @Test
     void flushToDatabase_shouldUpdateExistingCandles() {
         service.processEvent(testEvent);
+        when(persistenceService.persistCandles(any())).thenReturn(CompletableFuture.completedFuture(null));
         
-        CandleEntity existingCandle = new CandleEntity();
-        existingCandle.setSymbol("BTC-USD");
-        existingCandle.setCandleInterval("1s");
-        existingCandle.setOpenTime(1640995200L);
-        existingCandle.setHighPrice(30000.0);
-        existingCandle.setLowPrice(29900.0);
-        existingCandle.setVolume(5);
-        
-        when(candleRepository.findBySymbolAndCandleIntervalAndOpenTime(anyString(), anyString(), anyLong()))
-                .thenReturn(Optional.of(existingCandle));
-        
-        service.flushToDatabase();
+        service.flushToDatabase().join();
 
-        ArgumentCaptor<CandleEntity> captor = forClass(CandleEntity.class);
-        verify(candleRepository, times(2)).save(captor.capture());
-        
-        var savedCandles = captor.getAllValues();
-        savedCandles.forEach(candle -> {
-            assertTrue(candle.getHighPrice() >= 30050.0);
-            assertTrue(candle.getLowPrice() <= 30050.0);
-            assertTrue(candle.getVolume() >= 6);
-        });
+        verify(persistenceService, times(1)).persistCandles(any());
         
         var activeCandles = getActiveCandles();
         assertTrue(activeCandles.isEmpty());
@@ -226,20 +215,11 @@ class CandleAggregationServiceImplTest {
     @Test
     void flushToDatabase_shouldHandleMixedInsertAndUpdate() {
         service.processEvent(testEvent);
+        when(persistenceService.persistCandles(any())).thenReturn(CompletableFuture.completedFuture(null));
         
-        CandleEntity existingCandle = new CandleEntity();
-        existingCandle.setSymbol("BTC-USD");
-        existingCandle.setCandleInterval("1s");
-        existingCandle.setOpenTime(1640995200L);
-        
-        when(candleRepository.findBySymbolAndCandleIntervalAndOpenTime("BTC-USD", "1s", 1640995200L))
-                .thenReturn(Optional.of(existingCandle));
-        when(candleRepository.findBySymbolAndCandleIntervalAndOpenTime("BTC-USD", "1m", 1640995200L))
-                .thenReturn(Optional.empty());
-        
-        service.flushToDatabase();
+        service.flushToDatabase().join();
 
-        verify(candleRepository, times(2)).save(any(CandleEntity.class));
+        verify(persistenceService, times(1)).persistCandles(any());
         
         var activeCandles = getActiveCandles();
         assertTrue(activeCandles.isEmpty());
