@@ -1,7 +1,8 @@
 package com.trading.candle.aggregator.service;
 
 import com.trading.candle.aggregator.model.BidAskEvent;
+import java.util.concurrent.CompletableFuture;
 
 public interface CandleAggregationService {
-    public void processEvent(BidAskEvent event);
+    public CompletableFuture<Void> processEvent(BidAskEvent event);
 }

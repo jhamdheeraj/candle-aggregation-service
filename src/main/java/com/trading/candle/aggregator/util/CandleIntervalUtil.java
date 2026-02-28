@@ -17,4 +17,18 @@ public class CandleIntervalUtil {
         long seconds = toSeconds(interval);
         return (timestamp / seconds) * seconds;
     }
+    
+    public static long alignTimeWithDelay(long timestamp, String interval) {
+        long seconds = toSeconds(interval);
+        long alignedTime = (timestamp / seconds) * seconds;
+        
+        // Allow for slight delays (up to 10% of interval)
+        long delayThreshold = seconds / 10;
+        if (timestamp - alignedTime > delayThreshold) {
+            // If event is significantly delayed, align to next interval
+            return alignedTime + seconds;
+        }
+        
+        return alignedTime;
+    }
 }
