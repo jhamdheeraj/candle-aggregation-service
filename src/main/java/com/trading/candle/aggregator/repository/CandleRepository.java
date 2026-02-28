@@ -5,7 +5,14 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface CandleRepository extends JpaRepository<CandleEntity, Long> {
+    Optional<CandleEntity>
+    findBySymbolAndCandleIntervalAndOpenTime(
+            String symbol,
+            String candleInterval,
+            long openTime
+    );
 }
