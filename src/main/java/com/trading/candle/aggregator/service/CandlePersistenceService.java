@@ -7,4 +7,5 @@ import java.util.concurrent.CompletableFuture;
 
 public interface CandlePersistenceService {
     CompletableFuture<Void> persistCandles(List<CandleEntity> candles);
+    void persistCandlesTransactional(List<CandleEntity> candles);
 }

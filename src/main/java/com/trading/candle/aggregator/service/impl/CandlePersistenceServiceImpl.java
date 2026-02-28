@@ -6,6 +6,7 @@ import com.trading.candle.aggregator.service.CandlePersistenceService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,15 +21,17 @@ public class CandlePersistenceServiceImpl implements CandlePersistenceService {
 
     private final CandleRepository candleRepository;
     private final Executor taskExecutor;
+    private final ApplicationContext applicationContext;
 
     public CandlePersistenceServiceImpl(CandleRepository candleRepository, 
-                                       @Qualifier("candleAggregationExecutor") Executor taskExecutor) {
+                                       @Qualifier("candleAggregationExecutor") Executor taskExecutor,
+                                       ApplicationContext applicationContext) {
         this.candleRepository = candleRepository;
         this.taskExecutor = taskExecutor;
+        this.applicationContext = applicationContext;
     }
 
     @Override
-    @Transactional
     public CompletableFuture<Void> persistCandles(List<CandleEntity> candles) {
         if (candles.isEmpty()) {
             return CompletableFuture.completedFuture(null);
@@ -36,13 +39,19 @@ public class CandlePersistenceServiceImpl implements CandlePersistenceService {
 
         return CompletableFuture.runAsync(() -> {
             try {
-                persistCandlesBulk(candles);
+                CandlePersistenceService proxy = applicationContext.getBean(CandlePersistenceService.class);
+                proxy.persistCandlesTransactional(candles);
                 logger.info("Successfully persisted {} candles", candles.size());
             } catch (Exception e) {
                 logger.error("Failed to persist candles: {}", e.getMessage(), e);
                 throw new RuntimeException("Failed to persist candles", e);
             }
         }, taskExecutor);
+    }
+
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public void persistCandlesTransactional(List<CandleEntity> candles) {
+        persistCandlesBulk(candles);
     }
 
     private void persistCandlesBulk(List<CandleEntity> candles) {
