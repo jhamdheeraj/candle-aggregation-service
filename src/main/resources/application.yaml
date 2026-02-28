@@ -44,11 +44,25 @@ spring:
         queue-capacity: 1000
       thread-name-prefix: candle-async-
 
-  management:
-    endpoints:
-      web:
-        exposure:
-          include: health,info
+# Candle aggregation configuration
+candle:
+  aggregation:
+    intervals: 1s,1m,5m,15m,1h,4h,1d
+    flush-rate-ms: 1000
+
+# Logging configuration
+logging:
+  level:
+    com.trading.candle.aggregator: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+# Actuator endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
 
 server:
   port: 8080
