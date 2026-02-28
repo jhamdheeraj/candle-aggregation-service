@@ -3,6 +3,7 @@ package com.trading.candle.aggregator.service.impl;
 import com.trading.candle.aggregator.model.BidAskEvent;
 import com.trading.candle.aggregator.service.CandleAggregationService;
 import com.trading.candle.aggregator.service.CandleDataSimulatorService;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -24,7 +25,7 @@ public class CandleDataSimulatorServiceImpl implements CandleDataSimulatorServic
     }
 
     @Override
-    @Scheduled(fixedRate = 200)
+    @Scheduled(fixedRate = 10)
     public void generateEvent() {
         String symbol = getRandom().nextBoolean() ? "BTC-USD" : "ETH-USD";
         double base = symbol.equals("BTC-USD") ? 30000 : 2000;
@@ -39,9 +40,14 @@ public class CandleDataSimulatorServiceImpl implements CandleDataSimulatorServic
 
         System.out.println("Generated event: " + event);
         try {
-            candleAggregationService.processEvent(event);
+            processEventAsync(event);
         } catch (Exception e) {
             System.err.println("Error processing event: " + e.getMessage());
         }
+    }
+
+    @Async
+    public void processEventAsync(BidAskEvent event) {
+        candleAggregationService.processEvent(event);
     }
 }

@@ -3,19 +3,46 @@ spring:
     name: candle.aggregator
 
   datasource:
-    url: jdbc:h2:mem:candles
+    url: jdbc:h2:mem:candles;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;LOCK_TIMEOUT=10000
     driverClassName: org.h2.Driver
     username: sa
     password: ""
-    h2:
-      console:
-        enabled: true
-        path: /h2-console
-    jpa:
-      database-platform: org.hibernate.dialect.H2Dialect
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
       hibernate:
-        ddl-auto: update
-      show-sql: true
+        jdbc:
+          batch_size: 50
+          fetch_size: 1000
+        order_inserts: true
+        order_updates: true
+        batch_versioned_data: true
+        cache:
+          use_second_level_cache: false
+          use_query_cache: false
+
+  task:
+    execution:
+      pool:
+        core-size: 10
+        max-size: 50
+        queue-capacity: 1000
+      thread-name-prefix: candle-async-
 
   management:
     endpoints:

@@ -5,8 +5,10 @@ import com.trading.candle.aggregator.model.BidAskEvent;
 import com.trading.candle.aggregator.repository.CandleRepository;
 import com.trading.candle.aggregator.service.CandleAggregationService;
 import com.trading.candle.aggregator.util.CandleIntervalUtil;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
@@ -59,33 +61,28 @@ public class CandleAggregationServiceImpl implements CandleAggregationService {
         }
     }
 
-    @Scheduled(fixedRate = 5000)
+    @Scheduled(fixedRate = 1000)
+    @Transactional
     public void flushToDatabase() {
 
         if (activeCandles.isEmpty()) {
             return;
         }
 
-        for (CandleEntity candle : activeCandles.values()) {
-
+        List<CandleEntity> candlesToSave = new java.util.ArrayList<>(activeCandles.values());
+        
+        for (CandleEntity candle : candlesToSave) {
             candleRepository.findBySymbolAndCandleIntervalAndOpenTime(
                     candle.getSymbol(),
                     candle.getCandleInterval(),
                     candle.getOpenTime()
             ).ifPresentOrElse(existing -> {
-
-                // UPDATE existing candle
-                existing.setHighPrice(
-                        Math.max(existing.getHighPrice(), candle.getHighPrice()));
-                existing.setLowPrice(
-                        Math.min(existing.getLowPrice(), candle.getLowPrice()));
+                existing.setHighPrice(Math.max(existing.getHighPrice(), candle.getHighPrice()));
+                existing.setLowPrice(Math.min(existing.getLowPrice(), candle.getLowPrice()));
                 existing.setClosePrice(candle.getClosePrice());
                 existing.setVolume(existing.getVolume() + candle.getVolume());
-
                 candleRepository.save(existing);
-
             }, () -> {
-                // INSERT new candle
                 candleRepository.save(candle);
             });
         }
