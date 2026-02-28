@@ -1,0 +1,297 @@
+package com.trading.candle.aggregator.service;
+
+import com.trading.candle.aggregator.entity.CandleEntity;
+import com.trading.candle.aggregator.model.BidAskEvent;
+import com.trading.candle.aggregator.repository.CandleRepository;
+import com.trading.candle.aggregator.service.impl.CandleAggregationServiceImpl;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentCaptor.forClass;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
+class CandleAggregationServiceImplTest {
+
+    @Mock
+    private CandleRepository candleRepository;
+
+    @InjectMocks
+    private CandleAggregationServiceImpl service;
+
+    private BidAskEvent testEvent;
+
+    @BeforeEach
+    void setUp() {
+        testEvent = new BidAskEvent("BTC-USD", 30000.0, 30100.0, 1640995200L);
+    }
+
+    @Test
+    void processEvent_shouldCreateNewCandlesForAllIntervals() {
+        service.processEvent(testEvent);
+
+        var activeCandles = getActiveCandles();
+        assertEquals(2, activeCandles.size());
+        
+        assertTrue(activeCandles.containsKey("BTC-USD_1s_1640995200"));
+        assertTrue(activeCandles.containsKey("BTC-USD_1m_1640995200"));
+    }
+
+    @Test
+    void processEvent_shouldCalculateCorrectMidPrice() {
+        service.processEvent(testEvent);
+
+        var activeCandles = getActiveCandles();
+        double expectedMidPrice = (30000.0 + 30100.0) / 2.0;
+        
+        activeCandles.values().forEach(candle -> {
+            assertEquals(expectedMidPrice, candle.getOpenPrice());
+            assertEquals(expectedMidPrice, candle.getHighPrice());
+            assertEquals(expectedMidPrice, candle.getLowPrice());
+            assertEquals(expectedMidPrice, candle.getClosePrice());
+        });
+    }
+
+    @Test
+    void processEvent_shouldUpdateExistingCandle() {
+        String key = "BTC-USD_1s_1640995200";
+        
+        service.processEvent(testEvent);
+        
+        BidAskEvent secondEvent = new BidAskEvent("BTC-USD", 30200.0, 30300.0, 1640995200L);
+        service.processEvent(secondEvent);
+
+        var activeCandles = getActiveCandles();
+        CandleEntity candle = activeCandles.get(key);
+        
+        assertNotNull(candle);
+        assertEquals(30050.0, candle.getOpenPrice());
+        assertEquals(30250.0, candle.getHighPrice());
+        assertEquals(30050.0, candle.getLowPrice());
+        assertEquals(30250.0, candle.getClosePrice());
+        assertEquals(2, candle.getVolume());
+    }
+
+    @Test
+    void processEvent_shouldHandleHighPriceUpdate() {
+        service.processEvent(testEvent);
+        
+        BidAskEvent higherPriceEvent = new BidAskEvent("BTC-USD", 31000.0, 31100.0, 1640995200L);
+        service.processEvent(higherPriceEvent);
+
+        var activeCandles = getActiveCandles();
+        CandleEntity candle = activeCandles.get("BTC-USD_1s_1640995200");
+        
+        assertEquals(31050.0, candle.getHighPrice());
+    }
+
+    @Test
+    void processEvent_shouldHandleLowPriceUpdate() {
+        service.processEvent(testEvent);
+        
+        BidAskEvent lowerPriceEvent = new BidAskEvent("BTC-USD", 29000.0, 29100.0, 1640995200L);
+        service.processEvent(lowerPriceEvent);
+
+        var activeCandles = getActiveCandles();
+        CandleEntity candle = activeCandles.get("BTC-USD_1s_1640995200");
+        
+        assertEquals(29050.0, candle.getLowPrice());
+    }
+
+    @Test
+    void processEvent_shouldHandleDifferentSymbols() {
+        BidAskEvent ethEvent = new BidAskEvent("ETH-USD", 2000.0, 2100.0, 1640995200L);
+        
+        service.processEvent(testEvent);
+        service.processEvent(ethEvent);
+
+        var activeCandles = getActiveCandles();
+        assertEquals(4, activeCandles.size());
+        
+        assertTrue(activeCandles.containsKey("BTC-USD_1s_1640995200"));
+        assertTrue(activeCandles.containsKey("BTC-USD_1m_1640995200"));
+        assertTrue(activeCandles.containsKey("ETH-USD_1s_1640995200"));
+        assertTrue(activeCandles.containsKey("ETH-USD_1m_1640995200"));
+    }
+
+    @Test
+    void processEvent_shouldHandleDifferentTimestamps() {
+        BidAskEvent laterEvent = new BidAskEvent("BTC-USD", 30000.0, 30100.0, 1640995260L);
+        
+        service.processEvent(testEvent);
+        service.processEvent(laterEvent);
+
+        var activeCandles = getActiveCandles();
+        assertEquals(4, activeCandles.size());
+        
+        assertTrue(activeCandles.containsKey("BTC-USD_1s_1640995200"));
+        assertTrue(activeCandles.containsKey("BTC-USD_1m_1640995200"));
+        assertTrue(activeCandles.containsKey("BTC-USD_1s_1640995200"));
+        assertTrue(activeCandles.containsKey("BTC-USD_1m_1640995200"));
+    }
+
+    @Test
+    void processEvent_shouldHandleZeroBidAsk() {
+        BidAskEvent zeroEvent = new BidAskEvent("BTC-USD", 0.0, 0.0, 1640995200L);
+        
+        service.processEvent(zeroEvent);
+
+        var activeCandles = getActiveCandles();
+        activeCandles.values().forEach(candle -> {
+            assertEquals(0.0, candle.getOpenPrice());
+            assertEquals(0.0, candle.getHighPrice());
+            assertEquals(0.0, candle.getLowPrice());
+            assertEquals(0.0, candle.getClosePrice());
+        });
+    }
+
+    @Test
+    void processEvent_shouldHandleNegativePrices() {
+        BidAskEvent negativeEvent = new BidAskEvent("BTC-USD", -1000.0, -900.0, 1640995200L);
+        
+        service.processEvent(negativeEvent);
+
+        var activeCandles = getActiveCandles();
+        double expectedMidPrice = (-1000.0 + -900.0) / 2.0;
+        activeCandles.values().forEach(candle -> {
+            assertEquals(expectedMidPrice, candle.getOpenPrice());
+        });
+    }
+
+    @Test
+    void flushToDatabase_shouldDoNothingWhenNoActiveCandles() {
+        service.flushToDatabase();
+        
+        verify(candleRepository, never()).save(any(CandleEntity.class));
+        verify(candleRepository, never()).findBySymbolAndCandleIntervalAndOpenTime(anyString(), anyString(), anyLong());
+    }
+
+    @Test
+    void flushToDatabase_shouldInsertNewCandles() {
+        service.processEvent(testEvent);
+        
+        when(candleRepository.findBySymbolAndCandleIntervalAndOpenTime(anyString(), anyString(), anyLong()))
+                .thenReturn(Optional.empty());
+        
+        service.flushToDatabase();
+
+        verify(candleRepository, times(2)).save(any(CandleEntity.class));
+        
+        var activeCandles = getActiveCandles();
+        assertTrue(activeCandles.isEmpty());
+    }
+
+    @Test
+    void flushToDatabase_shouldUpdateExistingCandles() {
+        service.processEvent(testEvent);
+        
+        CandleEntity existingCandle = new CandleEntity();
+        existingCandle.setSymbol("BTC-USD");
+        existingCandle.setCandleInterval("1s");
+        existingCandle.setOpenTime(1640995200L);
+        existingCandle.setHighPrice(30000.0);
+        existingCandle.setLowPrice(29900.0);
+        existingCandle.setVolume(5);
+        
+        when(candleRepository.findBySymbolAndCandleIntervalAndOpenTime(anyString(), anyString(), anyLong()))
+                .thenReturn(Optional.of(existingCandle));
+        
+        service.flushToDatabase();
+
+        ArgumentCaptor<CandleEntity> captor = forClass(CandleEntity.class);
+        verify(candleRepository, times(2)).save(captor.capture());
+        
+        var savedCandles = captor.getAllValues();
+        savedCandles.forEach(candle -> {
+            assertTrue(candle.getHighPrice() >= 30050.0);
+            assertTrue(candle.getLowPrice() <= 30050.0);
+            assertTrue(candle.getVolume() >= 6);
+        });
+        
+        var activeCandles = getActiveCandles();
+        assertTrue(activeCandles.isEmpty());
+    }
+
+    @Test
+    void flushToDatabase_shouldHandleMixedInsertAndUpdate() {
+        service.processEvent(testEvent);
+        
+        CandleEntity existingCandle = new CandleEntity();
+        existingCandle.setSymbol("BTC-USD");
+        existingCandle.setCandleInterval("1s");
+        existingCandle.setOpenTime(1640995200L);
+        
+        when(candleRepository.findBySymbolAndCandleIntervalAndOpenTime("BTC-USD", "1s", 1640995200L))
+                .thenReturn(Optional.of(existingCandle));
+        when(candleRepository.findBySymbolAndCandleIntervalAndOpenTime("BTC-USD", "1m", 1640995200L))
+                .thenReturn(Optional.empty());
+        
+        service.flushToDatabase();
+
+        verify(candleRepository, times(2)).save(any(CandleEntity.class));
+        
+        var activeCandles = getActiveCandles();
+        assertTrue(activeCandles.isEmpty());
+    }
+
+    @Test
+    void processEvent_shouldHandleConcurrentAccess() throws InterruptedException {
+        int threadCount = 10;
+        int eventsPerThread = 100;
+        Thread[] threads = new Thread[threadCount];
+
+        for (int i = 0; i < threadCount; i++) {
+            final int threadId = i;
+            threads[i] = new Thread(() -> {
+                for (int j = 0; j < eventsPerThread; j++) {
+                    BidAskEvent event = new BidAskEvent(
+                            "BTC-USD", 
+                            30000.0 + threadId, 
+                            30100.0 + threadId, 
+                            1640995200L + j
+                    );
+                    service.processEvent(event);
+                }
+            });
+        }
+
+        for (Thread thread : threads) {
+            thread.start();
+        }
+
+        for (Thread thread : threads) {
+            thread.join();
+        }
+
+        var activeCandles = getActiveCandles();
+        assertTrue(activeCandles.size() > 0);
+        
+        activeCandles.values().forEach(candle -> {
+            assertNotNull(candle.getSymbol());
+            assertNotNull(candle.getCandleInterval());
+            assertTrue(candle.getVolume() > 0);
+        });
+    }
+
+    @SuppressWarnings("unchecked")
+    private ConcurrentHashMap<String, CandleEntity> getActiveCandles() {
+        try {
+            var field = CandleAggregationServiceImpl.class.getDeclaredField("activeCandles");
+            field.setAccessible(true);
+            return (ConcurrentHashMap<String, CandleEntity>) field.get(service);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to access activeCandles field", e);
+        }
+    }
+}
