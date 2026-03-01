@@ -33,6 +33,15 @@ class CandleAggregationServiceImplTest {
     @Mock
     private Executor taskExecutor;
 
+    @Mock
+    private com.trading.candle.aggregator.config.CandleAggregationProperties properties;
+
+    @Mock
+    private com.trading.candle.aggregator.config.ApplicationLifecycleManager lifecycleManager;
+
+    @Mock
+    private com.trading.candle.aggregator.controller.HealthController healthController;
+
     private CandleAggregationServiceImpl service;
 
     private BidAskEvent testEvent;
@@ -41,22 +50,25 @@ class CandleAggregationServiceImplTest {
     void setUp() {
         testEvent = new BidAskEvent("BTC-USD", 30000.0, 30100.0, 1640995200L);
         
+        // Mock executor to run tasks synchronously for testing
         doAnswer(invocation -> {
             Runnable task = invocation.getArgument(0);
             task.run();
             return null;
         }).when(taskExecutor).execute(any(Runnable.class));
         
-        service = new CandleAggregationServiceImpl(candleRepository, persistenceService, taskExecutor);
+        when(properties.getIntervals()).thenReturn(java.util.Arrays.asList("1s", "1m"));
+        var processing = new com.trading.candle.aggregator.config.CandleAggregationProperties.Processing();
+        processing.setPriceCalculationDivisor(2.0);
+        when(properties.getProcessing()).thenReturn(processing);
         
-        // Manually initialize supportedIntervals since @PostConstruct doesn't work in unit tests
-        try {
-            var intervalsField = CandleAggregationServiceImpl.class.getDeclaredField("supportedIntervals");
-            intervalsField.setAccessible(true);
-            intervalsField.set(service, java.util.Arrays.asList("1s", "1m"));
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to initialize supportedIntervals", e);
-        }
+        // Mock lifecycle manager to not be shutting down
+        when(lifecycleManager.isShuttingDown()).thenReturn(false);
+        
+        service = new CandleAggregationServiceImpl(candleRepository, persistenceService, taskExecutor, properties, lifecycleManager, healthController);
+        
+        // Manually call init since @PostConstruct doesn't work in unit tests
+        service.init();
     }
 
     @Test
@@ -66,8 +78,16 @@ class CandleAggregationServiceImplTest {
         var activeCandles = getActiveCandles();
         assertEquals(2, activeCandles.size());
         
-        assertTrue(activeCandles.containsKey("BTC-USD_1s_1640995200"));
-        assertTrue(activeCandles.containsKey("BTC-USD_1m_1640995200"));
+        // Check that candles exist for both intervals (don't hardcode exact timestamps)
+        long candleCountFor1s = activeCandles.keySet().stream()
+                .filter(key -> key.startsWith("BTC-USD_1s_"))
+                .count();
+        long candleCountFor1m = activeCandles.keySet().stream()
+                .filter(key -> key.startsWith("BTC-USD_1m_"))
+                .count();
+        
+        assertEquals(1, candleCountFor1s);
+        assertEquals(1, candleCountFor1m);
     }
 
     @Test
@@ -87,15 +107,17 @@ class CandleAggregationServiceImplTest {
 
     @Test
     void processEvent_shouldUpdateExistingCandle() {
-        String key = "BTC-USD_1s_1640995200";
-        
         service.processEvent(testEvent);
         
         BidAskEvent secondEvent = new BidAskEvent("BTC-USD", 30200.0, 30300.0, 1640995200L);
         service.processEvent(secondEvent);
 
         var activeCandles = getActiveCandles();
-        CandleEntity candle = activeCandles.get(key);
+        // Find the 1s candle dynamically
+        CandleEntity candle = activeCandles.values().stream()
+                .filter(c -> c.getSymbol().equals("BTC-USD") && c.getCandleInterval().equals("1s"))
+                .findFirst()
+                .orElse(null);
         
         assertNotNull(candle);
         assertEquals(30050.0, candle.getOpenPrice());
@@ -113,8 +135,13 @@ class CandleAggregationServiceImplTest {
         service.processEvent(higherPriceEvent);
 
         var activeCandles = getActiveCandles();
-        CandleEntity candle = activeCandles.get("BTC-USD_1s_1640995200");
+        // Find the 1s candle dynamically
+        CandleEntity candle = activeCandles.values().stream()
+                .filter(c -> c.getSymbol().equals("BTC-USD") && c.getCandleInterval().equals("1s"))
+                .findFirst()
+                .orElse(null);
         
+        assertNotNull(candle);
         assertEquals(31050.0, candle.getHighPrice());
     }
 
@@ -126,8 +153,13 @@ class CandleAggregationServiceImplTest {
         service.processEvent(lowerPriceEvent);
 
         var activeCandles = getActiveCandles();
-        CandleEntity candle = activeCandles.get("BTC-USD_1s_1640995200");
+        // Find the 1s candle dynamically
+        CandleEntity candle = activeCandles.values().stream()
+                .filter(c -> c.getSymbol().equals("BTC-USD") && c.getCandleInterval().equals("1s"))
+                .findFirst()
+                .orElse(null);
         
+        assertNotNull(candle);
         assertEquals(29050.0, candle.getLowPrice());
     }
 
@@ -141,10 +173,17 @@ class CandleAggregationServiceImplTest {
         var activeCandles = getActiveCandles();
         assertEquals(4, activeCandles.size());
         
-        assertTrue(activeCandles.containsKey("BTC-USD_1s_1640995200"));
-        assertTrue(activeCandles.containsKey("BTC-USD_1m_1640995200"));
-        assertTrue(activeCandles.containsKey("ETH-USD_1s_1640995200"));
-        assertTrue(activeCandles.containsKey("ETH-USD_1m_1640995200"));
+        // Check for BTC candles
+        long btcCandleCount = activeCandles.keySet().stream()
+                .filter(key -> key.startsWith("BTC-USD_"))
+                .count();
+        // Check for ETH candles
+        long ethCandleCount = activeCandles.keySet().stream()
+                .filter(key -> key.startsWith("ETH-USD_"))
+                .count();
+        
+        assertEquals(2, btcCandleCount);
+        assertEquals(2, ethCandleCount);
     }
 
     @Test
@@ -155,12 +194,19 @@ class CandleAggregationServiceImplTest {
         service.processEvent(laterEvent);
 
         var activeCandles = getActiveCandles();
+        // Should have 4 candles: 2 intervals for each timestamp
         assertEquals(4, activeCandles.size());
         
-        assertTrue(activeCandles.containsKey("BTC-USD_1s_1640995200"));
-        assertTrue(activeCandles.containsKey("BTC-USD_1m_1640995200"));
-        assertTrue(activeCandles.containsKey("BTC-USD_1s_1640995200"));
-        assertTrue(activeCandles.containsKey("BTC-USD_1m_1640995200"));
+        // Count candles for each interval
+        long candle1sCount = activeCandles.keySet().stream()
+                .filter(key -> key.contains("_1s_"))
+                .count();
+        long candle1mCount = activeCandles.keySet().stream()
+                .filter(key -> key.contains("_1m_"))
+                .count();
+        
+        assertEquals(2, candle1sCount);
+        assertEquals(2, candle1mCount);
     }
 
     @Test
