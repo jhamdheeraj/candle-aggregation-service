@@ -8,5 +8,9 @@ CREATE TABLE candles (
     low_price DOUBLE,
     close_price DOUBLE,
     volume BIGINT,
-    UNIQUE(symbol, candle_interval, open_time)
+    CONSTRAINT uk_symbol_interval_time UNIQUE (symbol, candle_interval, open_time)
 );
+
+-- Indexes for query optimization
+CREATE INDEX idx_symbol_interval_time ON candles (symbol, candle_interval, open_time);
+CREATE INDEX idx_open_time ON candles (open_time);
