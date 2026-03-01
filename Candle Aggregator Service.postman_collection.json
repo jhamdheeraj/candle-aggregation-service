@@ -1,0 +1,92 @@
+{
+  "info": {
+    "_postman_id": "c50f5b90-e166-4fb4-b889-39236c12a149",
+    "name": "Candle Aggregator Service",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "45277357",
+    "_collection_link": "https://go.postman.co/collection/45277357-c50f5b90-e166-4fb4-b889-39236c12a149?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "Candle Aggregator History",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "localhost:8080/api/v1/candle-aggregator/history?symbol=BTC-USD&interval=1m&from=1640995200000&to=1641081600000",
+          "host": [
+            "localhost"
+          ],
+          "port": "8080",
+          "path": [
+            "api",
+            "v1",
+            "candle-aggregator",
+            "history"
+          ],
+          "query": [
+            {
+              "key": "symbol",
+              "value": "BTC-USD"
+            },
+            {
+              "key": "interval",
+              "value": "1m"
+            },
+            {
+              "key": "from",
+              "value": "1640995200000"
+            },
+            {
+              "key": "to",
+              "value": "1641081600000"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Application Health",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "localhost:8080/api/v1/health",
+          "host": [
+            "localhost"
+          ],
+          "port": "8080",
+          "path": [
+            "api",
+            "v1",
+            "health"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Acuator Health",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "localhost:8080/actuator/health",
+          "host": [
+            "localhost"
+          ],
+          "port": "8080",
+          "path": [
+            "actuator",
+            "health"
+          ]
+        }
+      },
+      "response": []
+    }
+  ]
+}
