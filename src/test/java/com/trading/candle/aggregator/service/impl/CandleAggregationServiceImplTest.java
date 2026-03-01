@@ -1,9 +1,9 @@
-package com.trading.candle.aggregator.service;
+package com.trading.candle.aggregator.service.impl;
 
 import com.trading.candle.aggregator.entity.CandleEntity;
 import com.trading.candle.aggregator.model.BidAskEvent;
 import com.trading.candle.aggregator.repository.CandleRepository;
-import com.trading.candle.aggregator.service.impl.CandleAggregationServiceImpl;
+import com.trading.candle.aggregator.service.CandlePersistenceService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
