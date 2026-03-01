@@ -48,6 +48,15 @@ class CandleAggregationServiceImplTest {
         }).when(taskExecutor).execute(any(Runnable.class));
         
         service = new CandleAggregationServiceImpl(candleRepository, persistenceService, taskExecutor);
+        
+        // Manually initialize supportedIntervals since @PostConstruct doesn't work in unit tests
+        try {
+            var intervalsField = CandleAggregationServiceImpl.class.getDeclaredField("supportedIntervals");
+            intervalsField.setAccessible(true);
+            intervalsField.set(service, java.util.Arrays.asList("1s", "1m"));
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to initialize supportedIntervals", e);
+        }
     }
 
     @Test
