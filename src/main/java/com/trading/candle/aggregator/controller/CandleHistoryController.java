@@ -1,31 +1,36 @@
 package com.trading.candle.aggregator.controller;
 
+import com.trading.candle.aggregator.dto.ErrorResponse;
+import com.trading.candle.aggregator.exception.ValidationException;
 import com.trading.candle.aggregator.service.CandleHistoryService;
+import com.trading.candle.aggregator.validation.CandleHistoryValidator;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
 
 @RestController
 @RequestMapping("api/v1/candle-aggregator")
+@Validated
 public class CandleHistoryController {
 
     private final CandleHistoryService candleHistoryService;
 
-    CandleHistoryController(CandleHistoryService candleHistoryService) {
+    private CandleHistoryController(CandleHistoryService candleHistoryService) {
         this.candleHistoryService = candleHistoryService;
     }
 
     @GetMapping(value = "/history")
-    public ResponseEntity<?> getCandleHistory(
+    public ResponseEntity<Map<String, Object>> getCandleHistory(
             @RequestParam String symbol,
             @RequestParam String interval,
             @RequestParam long from,
             @RequestParam long to) {
 
-        return ResponseEntity.ok(
-                candleHistoryService.getCandleHistory(symbol, interval, from, to)
-        );
+        ErrorResponse validationError = CandleHistoryValidator.validateInputs(symbol, interval, from, to);
+        if (validationError != null) throw new ValidationException(validationError);
+
+        return ResponseEntity.ok(candleHistoryService.getCandleHistory(symbol.trim(), interval.trim(), from, to));
     }
 }
