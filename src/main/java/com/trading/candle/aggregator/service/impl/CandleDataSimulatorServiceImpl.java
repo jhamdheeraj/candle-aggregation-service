@@ -1,5 +1,6 @@
 package com.trading.candle.aggregator.service.impl;
 
+import com.trading.candle.aggregator.config.CandleAggregationProperties;
 import com.trading.candle.aggregator.model.BidAskEvent;
 import com.trading.candle.aggregator.service.CandleAggregationService;
 import com.trading.candle.aggregator.service.CandleDataSimulatorService;
@@ -10,6 +11,8 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.util.List;
+import java.util.Map;
 import java.util.Random;
 
 @Service
@@ -19,9 +22,12 @@ public class CandleDataSimulatorServiceImpl implements CandleDataSimulatorServic
 
     private final Random random = new Random();
     private final CandleAggregationService candleAggregationService;
+    private final CandleAggregationProperties properties;
 
-    public CandleDataSimulatorServiceImpl(CandleAggregationService candleAggregationService) {
+    public CandleDataSimulatorServiceImpl(CandleAggregationService candleAggregationService,
+                                          CandleAggregationProperties properties) {
         this.candleAggregationService = candleAggregationService;
+        this.properties = properties;
     }
 
     protected Random getRandom() {
@@ -29,17 +35,21 @@ public class CandleDataSimulatorServiceImpl implements CandleDataSimulatorServic
     }
 
     @Override
-    @Scheduled(fixedRate = 10)
+    @Scheduled(fixedRateString = "#{@candleAggregationProperties.simulator.eventGenerationRateMs}")
     public void generateEvent() {
         try {
-            String symbol = getRandom().nextBoolean() ? "BTC-USD" : "ETH-USD";
-            double base = symbol.equals("BTC-USD") ? 30000 : 2000;
-            double price = base + getRandom().nextDouble() * 100;
+            List<String> symbols = properties.getSupportedSymbols();
+            Map<String, Double> baseValues = properties.getSymbolBaseValues();
+            String symbol = symbols.get(getRandom().nextInt(symbols.size()));
+            double base = baseValues.getOrDefault(symbol, 100.0);
+            double priceVariation = properties.getSimulator().getPriceVariationRange();
+            double bidAskSpread = properties.getSimulator().getBidAskSpread();
+            double price = base + getRandom().nextDouble() * priceVariation;
 
             BidAskEvent event = new BidAskEvent(
                     symbol,
-                    price - 1,
-                    price + 1,
+                    price - bidAskSpread,
+                    price + bidAskSpread,
                     Instant.now().getEpochSecond()
             );
 

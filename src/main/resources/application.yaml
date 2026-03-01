@@ -48,6 +48,13 @@ spring:
 candle:
   aggregation:
     intervals: 1s,1m,5m,15m,1h,4h,1d
+    supported-symbols: BTC-USD,ETH-USD,AAPL,GOOGL,TSLA
+    symbol-base-values:
+      BTC-USD: 30000.0
+      ETH-USD: 2000.0
+      AAPL: 150.0
+      GOOGL: 2500.0
+      TSLA: 800.0
     flush-rate-ms: 1000
     persistence:
       batch-size: 50
@@ -57,6 +64,10 @@ candle:
       price-calculation-divisor: 2.0
       max-concurrent-intervals: 10
       event-timeout-ms: 5000
+    simulator:
+      event-generation-rate-ms: 10
+      price-variation-range: 100.0
+      bid-ask-spread: 1.0
 
 # Logging configuration
 logging:

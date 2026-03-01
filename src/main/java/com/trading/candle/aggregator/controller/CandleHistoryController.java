@@ -16,9 +16,11 @@ import java.util.Map;
 public class CandleHistoryController {
 
     private final CandleHistoryService candleHistoryService;
+    private final CandleHistoryValidator validator;
 
-    private CandleHistoryController(CandleHistoryService candleHistoryService) {
+    public CandleHistoryController(CandleHistoryService candleHistoryService, CandleHistoryValidator validator) {
         this.candleHistoryService = candleHistoryService;
+        this.validator = validator;
     }
 
     @GetMapping(value = "/history")
@@ -28,7 +30,7 @@ public class CandleHistoryController {
             @RequestParam long from,
             @RequestParam long to) {
 
-        ErrorResponse validationError = CandleHistoryValidator.validateInputs(symbol, interval, from, to);
+        ErrorResponse validationError = validator.validateInputs(symbol, interval, from, to);
         if (validationError != null) throw new ValidationException(validationError);
 
         return ResponseEntity.ok(candleHistoryService.getCandleHistory(symbol.trim(), interval.trim(), from, to));

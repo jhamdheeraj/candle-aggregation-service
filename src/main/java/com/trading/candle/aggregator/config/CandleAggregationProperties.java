@@ -4,15 +4,19 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Map;
 
 @Component
 @ConfigurationProperties(prefix = "candle.aggregation")
 public class CandleAggregationProperties {
 
-    private List<String> intervals = List.of("1s", "1m");
-    private long flushRateMs = 1000;
+    private List<String> intervals;
+    private List<String> supportedSymbols;
+    private Map<String, Double> symbolBaseValues;
+    private long flushRateMs;
     private Persistence persistence = new Persistence();
     private Processing processing = new Processing();
+    private Simulator simulator = new Simulator();
 
     public List<String> getIntervals() {
         return intervals;
@@ -20,6 +24,22 @@ public class CandleAggregationProperties {
 
     public void setIntervals(List<String> intervals) {
         this.intervals = intervals;
+    }
+
+    public List<String> getSupportedSymbols() {
+        return supportedSymbols;
+    }
+
+    public void setSupportedSymbols(List<String> supportedSymbols) {
+        this.supportedSymbols = supportedSymbols;
+    }
+
+    public Map<String, Double> getSymbolBaseValues() {
+        return symbolBaseValues;
+    }
+
+    public void setSymbolBaseValues(Map<String, Double> symbolBaseValues) {
+        this.symbolBaseValues = symbolBaseValues;
     }
 
     public long getFlushRateMs() {
@@ -46,10 +66,18 @@ public class CandleAggregationProperties {
         this.processing = processing;
     }
 
+    public Simulator getSimulator() {
+        return simulator;
+    }
+
+    public void setSimulator(Simulator simulator) {
+        this.simulator = simulator;
+    }
+
     public static class Persistence {
-        private int batchSize = 50;
-        private int maxRetries = 3;
-        private long retryDelayMs = 1000;
+        private int batchSize;
+        private int maxRetries;
+        private long retryDelayMs;
 
         public int getBatchSize() {
             return batchSize;
@@ -77,9 +105,9 @@ public class CandleAggregationProperties {
     }
 
     public static class Processing {
-        private double priceCalculationDivisor = 2.0;
-        private int maxConcurrentIntervals = 10;
-        private long eventTimeoutMs = 5000;
+        private double priceCalculationDivisor;
+        private int maxConcurrentIntervals;
+        private long eventTimeoutMs;
 
         public double getPriceCalculationDivisor() {
             return priceCalculationDivisor;
@@ -103,6 +131,36 @@ public class CandleAggregationProperties {
 
         public void setEventTimeoutMs(long eventTimeoutMs) {
             this.eventTimeoutMs = eventTimeoutMs;
+        }
+    }
+
+    public static class Simulator {
+        private long eventGenerationRateMs;
+        private double priceVariationRange;
+        private double bidAskSpread;
+
+        public long getEventGenerationRateMs() {
+            return eventGenerationRateMs;
+        }
+
+        public void setEventGenerationRateMs(long eventGenerationRateMs) {
+            this.eventGenerationRateMs = eventGenerationRateMs;
+        }
+
+        public double getPriceVariationRange() {
+            return priceVariationRange;
+        }
+
+        public void setPriceVariationRange(double priceVariationRange) {
+            this.priceVariationRange = priceVariationRange;
+        }
+
+        public double getBidAskSpread() {
+            return bidAskSpread;
+        }
+
+        public void setBidAskSpread(double bidAskSpread) {
+            this.bidAskSpread = bidAskSpread;
         }
     }
 }

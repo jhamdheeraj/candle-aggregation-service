@@ -1,23 +1,39 @@
 package com.trading.candle.aggregator.validation;
 
+import com.trading.candle.aggregator.config.CandleAggregationProperties;
 import com.trading.candle.aggregator.dto.ErrorResponse;
+import org.springframework.stereotype.Component;
 
 import java.util.Set;
 
+@Component
 public class CandleHistoryValidator {
 
     private static final Set<String> VALID_INTERVALS = Set.of("1s", "5s", "1m", "5m", "15m", "1h", "4h", "1d");
+    private final CandleAggregationProperties properties;
 
-    public static ErrorResponse validateInputs(String symbol, String interval, long from, long to) {
+    public CandleHistoryValidator(CandleAggregationProperties properties) {
+        this.properties = properties;
+    }
+
+    public ErrorResponse validateInputs(String symbol, String interval, long from, long to) {
         ErrorResponse error;
         return (error = validateSymbol(symbol)) != null ? error :
                (error = validateInterval(interval)) != null ? error :
                validateTimestampRange(from, to);
     }
 
-    private static ErrorResponse validateSymbol(String symbol) {
-        return (symbol == null || symbol.isBlank()) ?
-            new ErrorResponse("BAD_REQUEST", "Symbol cannot be null or empty") : null;
+    private ErrorResponse validateSymbol(String symbol) {
+        if (symbol == null || symbol.isBlank()) {
+            return new ErrorResponse("BAD_REQUEST", "Symbol cannot be null or empty");
+        }
+        
+        if (!properties.getSupportedSymbols().contains(symbol.trim())) {
+            return new ErrorResponse("BAD_REQUEST", 
+                "Unsupported symbol: " + symbol.trim() + ". Supported symbols: " + properties.getSupportedSymbols());
+        }
+        
+        return null;
     }
 
     private static ErrorResponse validateInterval(String interval) {

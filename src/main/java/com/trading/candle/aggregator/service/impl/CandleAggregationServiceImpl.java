@@ -1,25 +1,24 @@
 package com.trading.candle.aggregator.service.impl;
 
+import com.trading.candle.aggregator.config.ApplicationLifecycleManager;
+import com.trading.candle.aggregator.config.CandleAggregationProperties;
+import com.trading.candle.aggregator.controller.HealthController;
 import com.trading.candle.aggregator.entity.CandleEntity;
 import com.trading.candle.aggregator.model.BidAskEvent;
 import com.trading.candle.aggregator.repository.CandleRepository;
 import com.trading.candle.aggregator.service.CandleAggregationService;
 import com.trading.candle.aggregator.service.CandlePersistenceService;
-import com.trading.candle.aggregator.config.ApplicationLifecycleManager;
-import com.trading.candle.aggregator.controller.HealthController;
 import com.trading.candle.aggregator.util.CandleIntervalUtil;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
-import com.trading.candle.aggregator.config.CandleAggregationProperties;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import jakarta.annotation.PostConstruct;
-import jakarta.annotation.PreDestroy;
-import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -30,7 +29,7 @@ import java.util.concurrent.Executor;
 public class CandleAggregationServiceImpl implements CandleAggregationService {
 
     private static final Logger logger = LoggerFactory.getLogger(CandleAggregationServiceImpl.class);
-    
+
     private final CandleAggregationProperties properties;
 
     private final ConcurrentMap<String, CandleEntity> activeCandles = new ConcurrentHashMap<>();
@@ -43,11 +42,11 @@ public class CandleAggregationServiceImpl implements CandleAggregationService {
     private final HealthController healthController;
 
     public CandleAggregationServiceImpl(CandleRepository candleRepository,
-                               CandlePersistenceService persistenceService,
-                               @Qualifier("candleAggregationExecutor") Executor taskExecutor,
-                               CandleAggregationProperties properties,
-                               ApplicationLifecycleManager lifecycleManager,
-                               HealthController healthController) {
+                                        CandlePersistenceService persistenceService,
+                                        @Qualifier("candleAggregationExecutor") Executor taskExecutor,
+                                        CandleAggregationProperties properties,
+                                        ApplicationLifecycleManager lifecycleManager,
+                                        HealthController healthController) {
         this.candleRepository = candleRepository;
         this.persistenceService = persistenceService;
         this.taskExecutor = taskExecutor;
@@ -65,6 +64,9 @@ public class CandleAggregationServiceImpl implements CandleAggregationService {
     @Override
     @Async
     public CompletableFuture<Void> processEvent(BidAskEvent event) {
+        logger.info("Received new event: symbol={}, bid={}, ask={}, timestamp={}",
+                event.symbol(), event.bid(), event.ask(), event.timestamp());
+
         // Reject new events during shutdown
         if (lifecycleManager.isShuttingDown()) {
             logger.warn("Rejecting event during shutdown: symbol={}", event.symbol());
@@ -82,10 +84,10 @@ public class CandleAggregationServiceImpl implements CandleAggregationService {
                         }
                     }, taskExecutor))
                     .toList();
-            
+
             // Update health indicator with successful processing
             healthController.updateLastCandleProcessed();
-            
+
             return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
         } catch (Exception e) {
             logger.error("Error processing event: {}", e.getMessage(), e);
@@ -110,7 +112,7 @@ public class CandleAggregationServiceImpl implements CandleAggregationService {
 
         logger.info("Flushing {} candles to database", activeCandles.size());
         List<CandleEntity> candlesToSave = new java.util.ArrayList<>(activeCandles.values());
-        
+
         return persistenceService.persistCandles(candlesToSave)
                 .thenRun(() -> {
                     logger.info("Successfully flushed {} candles", candlesToSave.size());
@@ -125,19 +127,18 @@ public class CandleAggregationServiceImpl implements CandleAggregationService {
     }
 
     private void processEventForInterval(BidAskEvent event, String interval) {
-        logger.info("Processing event: symbol={}, interval={}, timestamp={}, bid={}, ask={}", 
-                   event.symbol(), interval, event.timestamp(), event.bid(), event.ask());
-        
         long alignedTime = CandleIntervalUtil.alignTimeWithDelay(event.timestamp(), interval);
         String key = generateCandleKey(event.symbol(), interval, alignedTime);
         double price = calculateMidPrice(event.bid(), event.ask());
-        
+
         activeCandles.compute(key, (k, existing) -> {
             if (existing == null) {
-                logger.info("Creating new candle: symbol={}, interval={}, time={}, price={}", 
-                           event.symbol(), interval, alignedTime, price);
+                logger.info("Creating new candle: symbol={}, interval={}, time={}, price={}",
+                        event.symbol(), interval, alignedTime, price);
                 return createNewCandle(event.symbol(), interval, alignedTime, price);
             } else {
+                logger.info("Updating existing candle: symbol={}, interval={}, time={}, price={}",
+                        event.symbol(), interval, alignedTime, price);
                 return updateExistingCandle(existing, price);
             }
         });
@@ -176,7 +177,7 @@ public class CandleAggregationServiceImpl implements CandleAggregationService {
     public void shutdown() {
         logger.info("Shutting down candle aggregation service...");
         healthController.setAggregationStatus(false);
-        
+
         if (!activeCandles.isEmpty()) {
             logger.info("Flushing {} remaining candles before shutdown", activeCandles.size());
             try {
@@ -190,7 +191,7 @@ public class CandleAggregationServiceImpl implements CandleAggregationService {
                 healthController.setPersistenceStatus(false);
             }
         }
-        
+
         logger.info("Candle aggregation service shutdown completed");
     }
 }
