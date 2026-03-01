@@ -9,7 +9,7 @@ import com.trading.candle.aggregator.util.CandleIntervalUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
+import com.trading.candle.aggregator.config.CandleAggregationProperties;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -29,13 +29,7 @@ public class CandleAggregationServiceImpl implements CandleAggregationService {
 
     private static final Logger logger = LoggerFactory.getLogger(CandleAggregationServiceImpl.class);
     
-    @Value("${candle.aggregation.intervals:1s,1m}")
-    private String intervalsConfig;
-    
-    @Value("${candle.aggregation.flush-rate-ms:1000}")
-    private long flushRateMs;
-    
-    private static final double PRICE_CALCULATION_DIVISOR = 2.0;
+    private final CandleAggregationProperties properties;
 
     private final ConcurrentMap<String, CandleEntity> activeCandles = new ConcurrentHashMap<>();
     private List<String> supportedIntervals;
@@ -46,15 +40,17 @@ public class CandleAggregationServiceImpl implements CandleAggregationService {
 
     public CandleAggregationServiceImpl(CandleRepository candleRepository,
                                CandlePersistenceService persistenceService,
-                               @Qualifier("candleAggregationExecutor") Executor taskExecutor) {
+                               @Qualifier("candleAggregationExecutor") Executor taskExecutor,
+                               CandleAggregationProperties properties) {
         this.candleRepository = candleRepository;
         this.persistenceService = persistenceService;
         this.taskExecutor = taskExecutor;
+        this.properties = properties;
     }
 
     @PostConstruct
     public void init() {
-        this.supportedIntervals = Arrays.asList(intervalsConfig.split(","));
+        this.supportedIntervals = properties.getIntervals();
         logger.info("Initialized candle aggregation with intervals: {}", supportedIntervals);
     }
 
@@ -79,7 +75,7 @@ public class CandleAggregationServiceImpl implements CandleAggregationService {
         }
     }
 
-    @Scheduled(fixedRateString = "#{${candle.aggregation.flush-rate-ms:1000}}")
+    @Scheduled(fixedRateString = "#{@candleAggregationProperties.flushRateMs}")
     @Async
     @Transactional
     public CompletableFuture<Void> flushToDatabase() {
@@ -126,7 +122,7 @@ public class CandleAggregationServiceImpl implements CandleAggregationService {
     }
 
     private double calculateMidPrice(double bid, double ask) {
-        return (bid + ask) / PRICE_CALCULATION_DIVISOR;
+        return (bid + ask) / properties.getProcessing().getPriceCalculationDivisor();
     }
 
     private CandleEntity createNewCandle(String symbol, String interval, long alignedTime, double price) {

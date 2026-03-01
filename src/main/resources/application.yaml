@@ -49,6 +49,14 @@ candle:
   aggregation:
     intervals: 1s,1m,5m,15m,1h,4h,1d
     flush-rate-ms: 1000
+    persistence:
+      batch-size: 50
+      max-retries: 3
+      retry-delay-ms: 1000
+    processing:
+      price-calculation-divisor: 2.0
+      max-concurrent-intervals: 10
+      event-timeout-ms: 5000
 
 # Logging configuration
 logging:
